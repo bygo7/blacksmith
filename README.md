@@ -38,6 +38,9 @@ Now we can run Blacksmith. For example, we can run Blacksmith in fuzzing mode by
 sudo ./blacksmith --dimm-id 1 --runtime-limit 21600 --ranks 1 --sweeping  
 ```
 
+sudo ./blacksmith --dimm-id 1 --runtime-limit 21600 --ranks 1 -a 70 -s 0 --sweeping  > _log
+taskset 0x1 sudo ./blacksmith --dimm-id 1 --runtime-limit 21600 --ranks 1 -a 1500 -s 0 --sweeping  > _log
+
 While Blacksmith is running, you can use `tail -f stdout.log` to keep track of the current progress (e.g., patterns, found bit flips). You will see a line like 
 ```
 [!] Flip 0x2030486dcc, row 3090, page offset: 3532, from 8f to 8b, detected after 0 hours 6 minutes 6 seconds.

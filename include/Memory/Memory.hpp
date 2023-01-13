@@ -13,9 +13,23 @@
 #include "Memory/DramAnalyzer.hpp"
 #include "Fuzzer/PatternAddressMapper.hpp"
 
+#define PAGEMAP "/proc/self/pagemap"
+#define PAGE_SIZE 4096
+
+typedef uint64_t pointer;
+
+typedef struct {
+	char *v_addr;
+	physaddr_t p_addr;
+} pte_t;
+
 enum class DATA_PATTERN : char {
   ZEROES, ONES, RANDOM
 };
+
+#ifndef PPAGE_DEFINE
+#define PPAGE_DEFINE
+#endif
 
 class Memory {
  private:
@@ -34,6 +48,8 @@ class Memory {
 
   size_t check_memory_internal(PatternAddressMapper &mapping, const volatile char *start,
                                const volatile char *end, bool reproducibility_mode, bool verbose);
+  
+  void set_physmap(int pmap_fd);
 
  public:
 
@@ -41,6 +57,7 @@ class Memory {
   std::vector<BitFlip> flipped_bits;
 
   explicit Memory(bool use_superpage);
+  int check_victim_bank(int bank);
 
   ~Memory();
 

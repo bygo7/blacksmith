@@ -61,7 +61,7 @@ class CodeJitter {
 
   /// does the hammering if the function was previously created successfully, otherwise does nothing
   int hammer_pattern(FuzzingParameterSet &fuzzing_parameters, bool verbose);
-
+  uint64_t measure_time_asm(volatile char * addr_1, volatile char * addr_2);
   /// cleans this instance associated function pointer that points to the function that was jitted at runtime;
   /// cleaning up is required to release memory before jit_strict can be called again
   void cleanup();

@@ -5,7 +5,7 @@
 
 void DramAnalyzer::find_bank_conflicts() {
   size_t nr_banks_cur = 0;
-  int remaining_tries = NUM_BANKS*256;  // experimentally determined, may be unprecise
+  int remaining_tries = NUM_BANKS * 2048;  // experimentally determined, may be unprecise
   while (nr_banks_cur < NUM_BANKS && remaining_tries > 0) {
     reset:
     remaining_tries--;
@@ -13,11 +13,12 @@ void DramAnalyzer::find_bank_conflicts() {
     auto a2 = start_address + (dist(gen)%(MEM_SIZE/64))*64;
     auto ret1 = measure_time(a1, a2);
     auto ret2 = measure_time(a1, a2);
-
+    // fprintf(stdout, "cur_bank loop: %ld, remaining_tries: %d, ret1: %ld, ret2: %ld \n", nr_banks_cur, remaining_tries, ret1, ret2);
     if ((ret1 > THRESH) && (ret2 > THRESH)) {
       bool all_banks_set = true;
       for (size_t i = 0; i < NUM_BANKS; i++) {
         if (banks.at(i).empty()) {
+          // fprintf(stderr, "bank loop: %ld\n", i);
           all_banks_set = false;
         } else {
           auto bank = banks.at(i);
@@ -38,8 +39,12 @@ void DramAnalyzer::find_bank_conflicts() {
       assert(banks.at(nr_banks_cur).empty() && "Bank not empty");
       banks.at(nr_banks_cur).push_back(a1);
       banks.at(nr_banks_cur).push_back(a2);
+      ret1 = measure_time(a1, a2);
+      ret2 = measure_time(a1, a2);
+      fprintf(stderr, "bank %ld, a1:  | %d, a2:  | %d , ret1: %ld, ret2: %ld\n", nr_banks_cur, *a1, *a2, ret1, ret2);
       nr_banks_cur++;
     }
+    // Logger::log_error(format_string("ret1: %d, ret2:%d", ret1, ret2));
     if (remaining_tries==0) {
       Logger::log_error(format_string(
           "Could not find conflicting address sets. Is the number of banks (%d) defined correctly?",
@@ -47,11 +52,12 @@ void DramAnalyzer::find_bank_conflicts() {
       exit(1);
     }
   }
-
+  fprintf(stderr, "find_bank_conflict: loop end\n");
   Logger::log_info("Found bank conflicts.");
-  for (auto &bank : banks) {
-    find_targets(bank);
-  }
+  // for (auto &bank : banks) {
+  //   find_targets(bank);
+  // }
+  fprintf(stderr, "find_bank_conflict: find_targets finished\n");
   Logger::log_info("Populated addresses from different banks.");
 }
 
@@ -60,21 +66,26 @@ void DramAnalyzer::find_targets(std::vector<volatile char *> &target_bank) {
   // std::unordered_set<volatile char*> tmp; tmp.insert(target_bank.begin(), target_bank.end());
   std::unordered_set<volatile char *> tmp(target_bank.begin(), target_bank.end());
   target_bank.clear();
-  size_t num_repetitions = 5;
+  // size_t num_repetitions = 5;
+  fprintf(stderr, "find_targets\n");
   while (tmp.size() < 10) {
     auto a1 = start_address + (dist(gen)%(MEM_SIZE/64))*64;
     if (tmp.count(a1) > 0) continue;
-    uint64_t cumulative_times = 0;
-    for (size_t i = 0; i < num_repetitions; i++) {
+    // uint64_t cumulative_times = 0;
+    // for (size_t i = 0; i < num_repetitions; i++) {
       for (const auto &addr : tmp) {
-        cumulative_times += measure_time(a1, addr);
+        if (measure_time(a1, addr) > THRESH) {
+          tmp.insert(a1);
+          target_bank.push_back(a1);
+        }
+        // fprintf(stderr, "find_targets::measure_time %d\n", measure_time(a1, addr));
       }
-    }
-    cumulative_times /= num_repetitions;
-    if ((cumulative_times/tmp.size()) > THRESH) {
-      tmp.insert(a1);
-      target_bank.push_back(a1);
-    }
+    // }
+    // cumulative_times /= num_repetitions;
+    // if ((cumulative_times/tmp.size()) > THRESH) {
+    //   tmp.insert(a1);
+    //   target_bank.push_back(a1);
+    // }
   }
 }
 
@@ -92,7 +103,9 @@ std::vector<uint64_t> DramAnalyzer::get_bank_rank_functions() {
 
 void DramAnalyzer::load_known_functions(int num_ranks) {
   if (num_ranks==1) {
-    bank_rank_functions = std::vector<uint64_t>({0x2040, 0x24000, 0x48000, 0x90000});
+    // bank_rank_functions = std::vector<uint64_t>({0x2040, 0x24000, 0x48000, 0x90000});
+    // row_function = 0x3ffe0000;
+    bank_rank_functions = std::vector<uint64_t>({0x2A00, 0x124224000, 0x292490000, 0x49948000});
     row_function = 0x3ffe0000;
   } else if (num_ranks==2) {
     bank_rank_functions = std::vector<uint64_t>({0x2040, 0x44000, 0x88000, 0x110000, 0x220000});
@@ -143,19 +156,27 @@ size_t DramAnalyzer::count_acts_per_trefi() {
     clflushopt(b);
     mfence();
 
+    for(int j = 0; j < 100; j ++)
+      sched_yield();
     // get start timestamp and wait until we retrieved it
     before = rdtscp();
-    lfence();
+    // lfence();
 
     // do DRAM accesses
     (void)*a;
+    asm volatile ("nop\n" "nop\n" "nop\n" "nop\n" "nop\n" "nop\n" "nop\n" "nop\n" "nop\n" "nop\n"
+                 "nop\n" "nop\n" "nop\n" "nop\n" "nop\n" "nop\n" "nop\n" "nop\n" "nop\n" "nop\n" 
+                  );
     (void)*b;
-
+    asm volatile ("nop\n" "nop\n" "nop\n" "nop\n" "nop\n" "nop\n" "nop\n" "nop\n" "nop\n" "nop\n"
+                 "nop\n" "nop\n" "nop\n" "nop\n" "nop\n" "nop\n" "nop\n" "nop\n" "nop\n" "nop\n" 
+                  );
     // get end timestamp
     after = rdtscp();
 
     count++;
-    if ((after - before) > 1000) {
+    // fprintf(stderr, "%d th, af - bf : %ld", i, after - before);
+    if ((after - before) >  THRESH + 110) {
       if (i > skip_first_N && count_old!=0) {
         // multiply by 2 to account for both accesses we do (a, b)
         uint64_t value = (count - count_old)*2;
@@ -163,6 +184,7 @@ size_t DramAnalyzer::count_acts_per_trefi() {
         running_sum += value;
         // check after each 200 data points if our standard deviation reached 1 -> then stop collecting measurements
         if ((acts.size()%200)==0 && compute_std(acts, running_sum, acts.size())<3.0) break;
+        fprintf(stdout, "DRAMAnalyzer:: val: %llu, running_sum: %llu, acts.size: %d, compute: %d, after - before:%lu\n", value, running_sum, acts.size(), compute_std(acts, running_sum, acts.size()), after - before); 
       }
       count_old = count;
     }

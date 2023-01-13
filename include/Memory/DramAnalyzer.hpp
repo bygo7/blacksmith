@@ -11,6 +11,7 @@
 #include <random>
 
 #include "Utilities/AsmPrimitives.hpp"
+#define BY_EDIT
 
 class DramAnalyzer {
  private:
@@ -35,19 +36,36 @@ class DramAnalyzer {
   void find_bank_conflicts();
 
   /// Measures the time between accessing two addresses.
-  static int inline measure_time(volatile char *a1, volatile char *a2) {
+  static uint64_t inline measure_time(volatile char *a1, volatile char *a2) {
     uint64_t before, after;
-    before = rdtscp();
-    lfence();
+    uint64_t min_time = 10000000;
     for (size_t i = 0; i < DRAMA_ROUNDS; i++) {
-      (void)*a1;
-      (void)*a2;
       clflushopt(a1);
       clflushopt(a2);
       mfence();
+      
+      for(int j = 0; j < 100; j ++)
+        sched_yield();
+
+      before = rdtscp();
+      // lfence();
+      (void)*a1;
+      #ifdef BY_EDIT
+            asm volatile("nop\n" "nop\n" "nop\n" "nop\n" "nop\n" "nop\n""nop\n" "nop\n" "nop\n""nop\n" "nop\n" "nop\n"
+                        "nop\n" "nop\n" "nop\n" "nop\n" "nop\n" "nop\n""nop\n" "nop\n" "nop\n""nop\n" "nop\n" "nop\n");
+      #endif
+      (void)*a2;
+      #ifdef BY_EDIT
+      	    asm volatile("nop\n" "nop\n" "nop\n" "nop\n" "nop\n" "nop\n""nop\n" "nop\n" "nop\n""nop\n" "nop\n" "nop\n"
+                        "nop\n" "nop\n" "nop\n" "nop\n" "nop\n" "nop\n""nop\n" "nop\n" "nop\n""nop\n" "nop\n" "nop\n");
+      #endif      
+      after = rdtscp();
+
+      min_time = after - before > min_time ? min_time : after - before;
     }
-    after = rdtscp();
-    return (int) ((after - before)/DRAMA_ROUNDS);
+    clflushopt(a1);
+    clflushopt(a2);
+    return min_time;
   }
 
   std::vector<uint64_t> get_bank_rank_functions();
@@ -59,3 +77,30 @@ class DramAnalyzer {
 };
 
 #endif /* DRAMANALYZER */
+  static int inline measure_time(volatile char *a1, volatile char *a2) {
+    uint64_t before, after;
+    uint64_t min_time = 10000000;
+    for (size_t i = 0; i < DRAMA_ROUNDS; i++) {
+      clflushopt(a1);
+      clflushopt(a2);
+      mfence();
+      before = rdtscp();
+      // lfence();
+      (void)*a1;
+      #ifdef BY_EDIT
+            asm volatile("nop\n" "nop\n" "nop\n" "nop\n" "nop\n" "nop\n""nop\n" "nop\n" "nop\n""nop\n" "nop\n" "nop\n"
+                        "nop\n" "nop\n" "nop\n" "nop\n" "nop\n" "nop\n""nop\n" "nop\n" "nop\n""nop\n" "nop\n" "nop\n");
+      #endif
+      (void)*a2;
+      #ifdef BY_EDIT
+      	    asm volatile("nop\n" "nop\n" "nop\n" "nop\n" "nop\n" "nop\n""nop\n" "nop\n" "nop\n""nop\n" "nop\n" "nop\n"
+                        "nop\n" "nop\n" "nop\n" "nop\n" "nop\n" "nop\n""nop\n" "nop\n" "nop\n""nop\n" "nop\n" "nop\n");
+      #endif      
+      after = rdtscp();
+
+      min_time = after - before > min_time ? min_time : after - before;
+    }
+    clflushopt(a1);
+    clflushopt(a2);
+    return min_time;
+  }

@@ -49,10 +49,10 @@ int check_cpu() {
     cpu_supported |= (cpu_model.find(model) != std::string::npos);
   }
 
-  if (!cpu_supported) {
-    Logger::log_error("CPU model is not supported. You need to run DRAMA to update the DRAM address matrices. See the README.md for details.");
-    exit(EXIT_FAILURE);
-  }
+  // if (!cpu_supported) {
+  //   Logger::log_error("CPU model is not supported. You need to run DRAMA to update the DRAM address matrices. See the README.md for details.");
+  //   exit(EXIT_FAILURE);
+  // }
 
   return cpu_supported;
 }
@@ -74,11 +74,13 @@ int main(int argc, char **argv) {
 
   // allocate a large bulk of contiguous memory
   Memory memory(true);
-  memory.allocate_memory(MEM_SIZE);
+  memory.allocate_memory(MEM_SIZE); // MEM_SIZE: 1GB
 
   // find address sets that create bank conflicts
   DramAnalyzer dram_analyzer(memory.get_starting_address());
+  fprintf(stderr, "main:: get_Starting_address\n");
   dram_analyzer.find_bank_conflicts();
+  fprintf(stderr, "main:: find_bank_conflict operation finished\n");
   if (program_args.num_ranks != 0) {
     dram_analyzer.load_known_functions(program_args.num_ranks);
   } else {
@@ -87,12 +89,14 @@ int main(int argc, char **argv) {
   }
   // initialize the DRAMAddr class to load the proper memory configuration
   DRAMAddr::initialize(dram_analyzer.get_bank_rank_functions().size(), memory.get_starting_address());
-
+  fprintf(stderr, "initialize, acts_per_trefi: %d\n", program_args.acts_per_trefi);
   // count the number of possible activations per refresh interval, if not given as program argument
   if (program_args.acts_per_trefi==0)
     program_args.acts_per_trefi = dram_analyzer.count_acts_per_trefi();
 
+  fprintf(stderr, "acts_per_trefi: %d, next: ", program_args.acts_per_trefi);
   if (!program_args.load_json_filename.empty()) {
+    fprintf(stderr, "1\n");
     ReplayingHammerer replayer(memory);
     if (program_args.sweeping) {
       replayer.replay_patterns_brief(program_args.load_json_filename, program_args.pattern_ids,
@@ -101,17 +105,20 @@ int main(int argc, char **argv) {
       replayer.replay_patterns(program_args.load_json_filename, program_args.pattern_ids);
     }
   } else if (program_args.do_fuzzing && program_args.use_synchronization) {
+    fprintf(stderr, "2\n");
     FuzzyHammerer::n_sided_frequency_based_hammering(dram_analyzer, memory, static_cast<int>(program_args.acts_per_trefi), program_args.runtime_limit,
         program_args.num_address_mappings_per_pattern, program_args.sweeping);
   } else if (!program_args.do_fuzzing) {
+    fprintf(stderr, "3\n");
 //    TraditionalHammerer::n_sided_hammer(memory, program_args.acts_per_trefi, program_args.runtime_limit);
 //    TraditionalHammerer::n_sided_hammer_experiment(memory, program_args.acts_per_trefi);
     TraditionalHammerer::n_sided_hammer_experiment_frequencies(memory);
   } else {
+    fprintf(stderr, "4\n");
     Logger::log_error("Invalid combination of program control-flow arguments given. "
                       "Note: Fuzzing is only supported with synchronized hammering.");
   }
-
+  fprintf(stderr, "end\n");
   Logger::close();
   return EXIT_SUCCESS;
 }

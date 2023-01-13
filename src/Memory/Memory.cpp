@@ -1,6 +1,216 @@
 #include "Memory/Memory.hpp"
 
 #include <sys/mman.h>
+#include <sys/stat.h> 
+#include <fcntl.h>
+
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <utility>
+#include <string.h>
+
+#define CL_SIZE 64
+#define NOT_OPENED -1
+
+#define BK_SHIFT  28
+#define BK_MASK  (0b111111)
+#define ROW_SHIFT  0
+#define ROW_MASK  (0b1111111111111111)
+#define COL_SHIFT  16
+#define COL_MASK  (0b111111111111)
+int pmap_fd;
+size_t DRAM_MTX[34]  =  {
+// # 0b9876543210987654321098765432109876543210,
+    0b0000000000000010000001000100000000,
+    0b0000000000000011000011001000000000,
+    0b0001000100010000100000000000000000, 
+    0b0010001000100001000100000000000000, 
+    0b0100010001000100001000000000000000, 
+    0b1000100010001000010000000000000000, 
+    0b0000000000000000000010000000000000, 
+    0b0000000000000000000001000000000000, 
+    0b0000000000000000000000100000000000, 
+    0b0000000000000000000000010000000000, 
+    0b0000000000000000000000000010000000, 
+    0b0000000000000000000000000001000000, 
+    0b0000000000000000000000000000100000, 
+    0b0000000000000000000000000000010000, 
+    0b0000000000000000000000000000001000, 
+    0b0000000000000000000000000000000100, 
+    0b0000000000000000000000000000000010, 
+    0b0000000000000000000000000000000001, 
+    0b1000000000000000000000000000000000, 
+    0b0100000000000000000000000000000000, 
+    0b0010000000000000000000000000000000, 
+    0b0001000000000000000000000000000000, 
+    0b0000100000000000000000000000000000, 
+    0b0000010000000000000000000000000000, 
+    0b0000001000000000000000000000000000, 
+    0b0000000100000000000000000000000000, 
+    0b0000000010000000000000000000000000, 
+    0b0000000001000000000000000000000000, 
+    0b0000000000100000000000000000000000, 
+    0b0000000000010000000000000000000000, 
+    0b0000000000001000000000000000000000, 
+    0b0000000000001100000000000000000000, 
+    0b0000000000001010000000000000000000, 
+    0b0000000000000001000000000000000000,
+    };
+/* maps a DRAM addr (bank | col | row) --> virtual addr */
+size_t ADDR_MTX[34] =  {
+//             #     BBBBBBCCCCCCCCCCCCRRRRRRRRRRRRRRRR | B6 C12 R16
+// # 0b9876543210987654321098765432109876543210,
+  0b0000000000000000001000000000000000,
+  0b0000000000000000000100000000000000,
+  0b0000000000000000000010000000000000,
+  0b0000000000000000000001000000000000,
+  0b0000000000000000000000100000000000,
+  0b0000000000000000000000010000000000,
+  0b0000000000000000000000001000000000,
+  0b0000000000000000000000000100000000,
+  0b0000000000000000000000000010000000,
+  0b0000000000000000000000000001000000,
+  0b0000000000000000000000000000100000,
+  0b0000000000000000000000000000010000,
+  0b0000000000000000000000000000001000,
+  0b0000000000000000000000000000001100,
+  0b0000000000000000000000000000001010,
+  0b0000000000000000000000000000000001,
+  0b0010000000000000000001000100010000, 
+  0b0000010000000000001000100010001000, 
+  0b0000100000000000000100010001001100, 
+  0b0001000000000000000010001000100001, 
+  0b0000001000000000000000000000000000,
+  0b0000000100000000000000000000000000,
+  0b0000000010000000000000000000000000,
+  0b0000000001000000000000000000000000,
+  0b0100001100000000000000000000001011, 
+  0b1000000100000000000000000000001010, 
+  0b0000000000100000000000000000000000,
+  0b0000000000010000000000000000000000,
+  0b0000000000001000000000000000000000,
+  0b0000000000000100000000000000000000,
+  0b0000000000000010000000000000000000,
+  0b0000000000000001000000000000000000,
+  0b0000000000000000100000000000000000,
+  0b0000000000000000010000000000000000,
+};
+// int phys_cmp(const void *p1, const void *p2)
+// {
+// 	return ((pte_t *) p1)->p_addr - ((pte_t *) p2)->p_addr;
+// }
+
+std::string phys_2_dram(physaddr_t addr) {
+  auto p = addr;
+  uint64_t res = 0;
+  for (uint64_t i : DRAM_MTX) {
+    res = res << 1ULL;
+    res |= (uint64_t) __builtin_parityll(p & i);
+  }
+  int bank = (res >> BK_SHIFT) & BK_MASK;
+  int row = (res >> ROW_SHIFT) & ROW_MASK;
+  int col = (res >> COL_SHIFT) & COL_MASK;
+  std::string dram_addr;
+  dram_addr += std::to_string(bank);
+  dram_addr += "_";
+  dram_addr += std::to_string(row);
+  dram_addr += "_";
+  dram_addr += std::to_string(col);
+  return dram_addr;
+}
+
+physaddr_t dram_2_phys(std::string dram_addr) {
+  std::string bank, row, col;
+  std::istringstream f(dram_addr);
+  getline(f, bank, '_');
+  getline(f, row, '_');
+  getline(f, col, '_');
+  unsigned long long l = 0;
+  l = (stoll(bank) << BK_SHIFT);
+  l |= (stoll(row) << ROW_SHIFT); 
+  l |= (stoll(col) << COL_SHIFT);
+  unsigned long long res = 0;
+  for (uint64_t i : ADDR_MTX) {
+    res <<= 1ULL;
+    res |= (uint64_t) __builtin_parityll(l & i);
+  }
+  return res;
+}
+
+std::string modify_row_daddr(std::string dram_addr, int val){
+  std::string bank, row, col;
+  std::istringstream f(dram_addr);
+  getline(f, bank, '_');
+  getline(f, row, '_');
+  getline(f, col, '_');
+  unsigned long long row_val = stoll(row) + val;
+  if (row_val < 0 || row_val > ROW_MASK){
+    fprintf(stderr, "modify_row_daddr:: GOT PHERIPERAL DRAM_ADDR, %s - %lx. PICK ANOTHER\n", dram_addr.c_str(), dram_2_phys(dram_addr));
+    return NULL;
+  }
+  std::string modified_dram_addr;
+  modified_dram_addr += (bank);
+  modified_dram_addr += "_";
+  modified_dram_addr += std::to_string(row_val);
+  modified_dram_addr += "_";
+  modified_dram_addr += (col);
+  return modified_dram_addr;
+}
+
+uint64_t get_pfn(uint64_t entry)
+{
+	return ((entry) & 0x7fffffffffffffff);
+}
+
+physaddr_t virt_2_phys(uint64_t v_addr)
+{
+  // fprintf(stderr, "virt_2_phys:: got %lx\n", v_addr);
+	uint64_t entry;
+	uint64_t offset = (v_addr / PAGE_SIZE) * sizeof(entry);
+	uint64_t pfn;
+	bool to_open = false;
+	// assert(fd >= 0);
+	if (pmap_fd == NOT_OPENED) {
+		pmap_fd = open("/proc/self/pagemap", O_RDONLY);
+		assert(pmap_fd >= 0);
+		to_open = true;
+	}
+	// int rd = fread(&entry, sizeof(entry), 1 ,fp);
+	int bytes_read = pread(pmap_fd, &entry, sizeof(entry), offset);
+
+	assert(bytes_read == 8);
+	assert(entry & (1ULL << 63));
+
+	if (to_open) {
+		close(pmap_fd);
+	}
+
+	pfn = get_pfn(entry);
+	assert(pfn != 0);
+	return (pfn << 12) | (v_addr & 4095);
+}
+
+char *phys_2_virt(physaddr_t p_addr)
+{
+	physaddr_t p_page = p_addr & ~(((uint64_t) PAGE_SIZE - 1));
+  // fprintf(stderr, "\nphys_2_virt:: p_page:%lx\t", p_page);
+	// pte_t src_pte = {.v_addr = 0, .p_addr = p_page};
+	// pte_t *res_pte =
+	    // (pte_t *) bsearch(&src_pte, g_physmap, mem_size / PAGE_SIZE,
+			//       sizeof(pte_t), phys_cmp);
+  // fprintf(stderr, ", v_page:%p\t", res_pte->v_addr);
+  // fprintf(stderr, ", map_v_page:%p\n", ppage_2_vpage[p_page]);
+	if (ppage_2_vpage.find(p_page) == ppage_2_vpage.end()){
+    // fprintf(stderr, "phys_2_virt:: p_page not present in hashmap, %lx\n", p_page);
+		return (char *) 0xfffffffff;
+  }
+
+	return (char *)((uint64_t) ppage_2_vpage[p_page] | 
+  ((uint64_t) p_addr & (((uint64_t) PAGE_SIZE - 1))));
+}
+
+
 
 /// Allocates a MEM_SIZE bytes of memory by using super or huge pages.
 void Memory::allocate_memory(size_t mem_size) {
@@ -40,7 +250,73 @@ void Memory::allocate_memory(size_t mem_size) {
   }
 
   // initialize memory with random but reproducible sequence of numbers
-  initialize(DATA_PATTERN::RANDOM);
+  // initialize(DATA_PATTERN::RANDOM);
+  initialize(DATA_PATTERN::ONES);
+  pmap_fd = open(PAGEMAP, O_CREAT | O_RDWR, 0755);
+  assert(pmap_fd != -1);
+  set_physmap(pmap_fd);
+}
+
+int Memory::check_victim_bank(int bank){
+  // checking whole bank if possible
+  uint8_t data;
+  data = 0xff;
+
+  int flip = 0;
+  // if (val == 0)
+  //   data = 0x00;
+  // else
+  //   data = 0xff;
+  // fprintf(stderr, "check_victim_bank:: bank:%d, val:%u\n", bank, data);
+  for(int cur_row = 0; cur_row < ROW_MASK; cur_row ++){
+    for(int cur_col = 0; cur_col < COL_MASK; cur_col += CL_SIZE){
+      std::string cur_dram_addr;
+      cur_dram_addr += std::to_string(bank);
+      cur_dram_addr += "_";
+      cur_dram_addr += std::to_string(cur_row);
+      cur_dram_addr += "_";
+      cur_dram_addr += std::to_string(cur_col);
+      
+      char * cur_virt_addr = phys_2_virt(dram_2_phys(cur_dram_addr));
+      if ((pointer) cur_virt_addr == 0xfffffffff){
+        continue;
+      }
+      // fprintf(stderr, "check_victim_bank:: d:%s, p:%lx, v:%lx, val:%u\n", cur_dram_addr.c_str(), dram_2_phys(cur_dram_addr),(pointer)cur_virt_addr, data);
+      asm volatile("clflush (%0)" : : "r" (cur_virt_addr) : "memory");
+      asm volatile("mfence" : : : "memory");
+      if ((uint8_t)*cur_virt_addr != data){
+        flip ++;
+        fprintf(stderr, "check_victim_bank:: ERROR! GOTCHA %x at d:%s, p:%lx, \n", (uint8_t) *cur_virt_addr, cur_dram_addr.c_str(), dram_2_phys(cur_dram_addr));
+        fprintf(stdout, "check_victim_bank:: ERROR! GOTCHA %x at d:%s, p:%lx, \n", (uint8_t) *cur_virt_addr, cur_dram_addr.c_str(), dram_2_phys(cur_dram_addr));
+        *cur_virt_addr = data;
+      }
+    }
+  }
+  fflush(stdout);
+  return flip;
+}
+
+void Memory::set_physmap(int pmap_fd)
+{
+	fprintf(stderr, "MEMORY:: SET_PHYSMAP:: ");
+	int l_size = this->size / PAGE_SIZE; // 1 << 30 / 1 << 11
+	// pte_t *physmap = (pte_t *) malloc(sizeof(pte_t) * l_size);
+	assert(pmap_fd >= 0);
+	
+	for (uint64_t tmp = (uint64_t) start_address, idx = 0;
+	     tmp < (uint64_t) start_address + this->size; tmp += PAGE_SIZE) {
+    // fprintf(stdout, "%lx\t%lx\n", tmp, virt_2_phys(tmp));
+    
+    ppage_2_vpage[virt_2_phys(tmp)] = (char *)tmp;
+
+		if(idx == 0 || (tmp == ((uint64_t) start_address + this->size - PAGE_SIZE)))
+			fprintf(stderr, "phys: %016lx\n", virt_2_phys(tmp));
+		idx++;
+	}
+
+	// qsort(physmap, mem_size / PAGE_SIZE, sizeof(pte_t), phys_cmp);
+	// g_physmap = physmap;
+  // fflush(stdout);
 }
 
 void Memory::initialize(DATA_PATTERN data_pattern) {
@@ -59,7 +335,7 @@ void Memory::initialize(DATA_PATTERN data_pattern) {
       } else if (data_pattern == DATA_PATTERN::ZEROES) {
         fill_value = 0;
       } else if (data_pattern == DATA_PATTERN::ONES) {
-        fill_value = 1;
+        fill_value = ~(int) 0;
       } else {
         Logger::log_error("Could not initialize memory with given (unknown) DATA_PATTERN.");
       }
@@ -79,10 +355,15 @@ size_t Memory::check_memory(PatternAddressMapper &mapping, bool reproducibility_
 
   size_t sum_found_bitflips = 0;
   for (const auto &victim_row : victim_rows) {
-    auto victim_dram_addr = DRAMAddr((char*)victim_row);
-    victim_dram_addr.add_inplace(0, 1, 0);
-    sum_found_bitflips += check_memory_internal(mapping, victim_row,
-        (volatile char *) victim_dram_addr.to_virt(), reproducibility_mode, verbose);
+
+    // auto victim_dram_addr = DRAMAddr((char*)victim_row);
+    // victim_dram_addr.add_inplace(0, 1, 0);
+    // sum_found_bitflips += check_memory_internal(mapping, victim_row,
+    //     (volatile char *) victim_dram_addr.to_virt(), reproducibility_mode, verbose);
+    int victim_bank = DRAMAddr::get_bank((char*)victim_row);
+
+    sum_found_bitflips += check_victim_bank(victim_bank);
+
   }
   return sum_found_bitflips;
 }

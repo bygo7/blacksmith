@@ -19,7 +19,10 @@
 #define RANKS(x) ((x) << (8UL * 1UL))
 #define BANKS(x) ((x) << (8UL * 0UL))
 
-#define MTX_SIZE (30)
+#define MTX_SIZE (36)
+
+typedef uint64_t pointer;
+typedef uint64_t physaddr_t;
 
 typedef size_t mem_config_t;
 
@@ -58,6 +61,8 @@ class DRAMAddr {
   DRAMAddr(size_t bk, size_t r, size_t c);
 
   explicit DRAMAddr(void *addr);
+  
+  static int get_bank(void *addr);
 
   // must be DefaultConstructible for JSON (de-)serialization
   DRAMAddr();

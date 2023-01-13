@@ -1,4 +1,6 @@
 #include "Fuzzer/CodeJitter.hpp"
+#include "Memory/DramAnalyzer.hpp"
+#include "GlobalDefines.hpp"
 
 CodeJitter::CodeJitter()
     : pattern_sync_each_ref(false),
@@ -58,6 +60,109 @@ int CodeJitter::hammer_pattern(FuzzingParameterSet &fuzzing_parameters, bool ver
   return total_sync_acts;
 }
 
+
+uint64_t CodeJitter::measure_time_asm(volatile char * addr_1, volatile char * addr_2){
+  asmjit::CodeHolder code;
+  code.init(runtime.environment());
+  code.setLogger(logger);
+  asmjit::x86::Assembler a(&code);
+  // uint64_t before, after;
+  uint64_t min_time = 100000
+  ;
+  asmjit::Label while1_begin = a.newLabel();
+  asmjit::Label while1_end = a.newLabel();
+
+  a.bind(while1_begin);
+
+  a.mov(asmjit::x86::rax, (uint64_t) addr_1);
+  a.clflushopt(asmjit::x86::ptr(asmjit::x86::rax));
+  a.mov(asmjit::x86::rax, (uint64_t) addr_2);
+  a.clflushopt(asmjit::x86::ptr(asmjit::x86::rax));
+  a.mfence();
+
+  a.rdtscp();  // result of rdtscp is in [edx:eax]
+  a.lfence();
+  a.mov(asmjit::x86::ebx, asmjit::x86::eax);  // discard upper 32 bits, store lower 32b in ebx for later
+  
+  
+  a.mov(asmjit::x86::rax, addr_1);
+  a.mov(asmjit::x86::rcx, asmjit::x86::ptr(asmjit::x86::rax));
+  a.mov(asmjit::x86::rax, addr_2);
+  a.mov(asmjit::x86::rcx, asmjit::x86::ptr(asmjit::x86::rax));
+
+  a.rdtscp();
+  a.sub(asmjit::x86::eax, asmjit::x86::ebx);
+  a.cmp(asmjit::x86::eax, (uint64_t) REF_THRESH);
+  
+  a.mfence();
+
+  a.mov(asmjit::x86::ptr(min_time), asmjit::x86::eax);
+
+  fprintf(stderr, "while1\t");
+  // min_time = min_time < after - before ? min_time : after - before;
+  a.jg(while1_end);
+  a.jmp(while1_begin);
+  a.bind(while1_end);
+  fprintf(stderr, " end\n");
+  // before = rdtscp();
+  // a.mov(asmjit::x86::rax, addr_1);
+  // a.mov(asmjit::x86::rcx, asmjit::x86::ptr(asmjit::x86::rax));
+  // a.mov(asmjit::x86::rax, addr_2);
+  // a.mov(asmjit::x86::rcx, asmjit::x86::ptr(asmjit::x86::rax));
+  // after = rdtscp();
+  
+  // a.mov(asmjit::x86::rax, (uint64_t) addr_1);
+  // a.clflushopt(asmjit::x86::ptr(asmjit::x86::rax));
+  // a.mov(asmjit::x86::rax, (uint64_t) addr_2);
+  // a.clflushopt(asmjit::x86::ptr(asmjit::x86::rax));
+  // a.mfence();
+  // min_time = min_time < after - before ? min_time : after - before;
+
+  // before = rdtscp();
+  // a.mov(asmjit::x86::rax, addr_1);
+  // a.mov(asmjit::x86::rcx, asmjit::x86::ptr(asmjit::x86::rax));
+  // a.mov(asmjit::x86::rax, addr_2);
+  // a.mov(asmjit::x86::rcx, asmjit::x86::ptr(asmjit::x86::rax));
+  // after = rdtscp();
+  
+  // a.mov(asmjit::x86::rax, (uint64_t) addr_1);
+  // a.clflushopt(asmjit::x86::ptr(asmjit::x86::rax));
+  // a.mov(asmjit::x86::rax, (uint64_t) addr_2);
+  // a.clflushopt(asmjit::x86::ptr(asmjit::x86::rax));
+  //  a.mfence();
+
+  // min_time = min_time < after - before ? min_time : after - before;
+
+  // before = rdtscp();
+  // a.mov(asmjit::x86::rax, addr_1);
+  // a.mov(asmjit::x86::rcx, asmjit::x86::ptr(asmjit::x86::rax));
+  // a.mov(asmjit::x86::rax, addr_2);
+  // a.mov(asmjit::x86::rcx, asmjit::x86::ptr(asmjit::x86::rax));
+  // after = rdtscp();
+  
+  // a.mov(asmjit::x86::rax, (uint64_t) addr_1);
+  // a.clflushopt(asmjit::x86::ptr(asmjit::x86::rax));
+  // a.mov(asmjit::x86::rax, (uint64_t) addr_2);
+  // a.clflushopt(asmjit::x86::ptr(asmjit::x86::rax));
+  // a.mfence();
+  // min_time = min_time < after - before ? min_time : after - before;
+
+  // before = rdtscp();
+  // a.mov(asmjit::x86::rax, addr_1);
+  // a.mov(asmjit::x86::rcx, asmjit::x86::ptr(asmjit::x86::rax));
+  // a.mov(asmjit::x86::rax, addr_2);
+  // a.mov(asmjit::x86::rcx, asmjit::x86::ptr(asmjit::x86::rax));
+  // after = rdtscp();
+  
+  // a.mov(asmjit::x86::rax, (uint64_t) addr_1);
+  // a.clflushopt(asmjit::x86::ptr(asmjit::x86::rax));
+  // a.mov(asmjit::x86::rax, (uint64_t) addr_2);
+  // a.clflushopt(asmjit::x86::ptr(asmjit::x86::rax));
+  // a.mfence();
+  // min_time = min_time < after - before ? min_time : after - before;
+  return min_time;
+}
+
 void CodeJitter::jit_strict(int num_acts_per_trefi,
                             FLUSHING_STRATEGY flushing,
                             FENCING_STRATEGY fencing,
@@ -110,6 +215,12 @@ void CodeJitter::jit_strict(int num_acts_per_trefi,
 
   // ------- part 1: synchronize with the beginning of an interval ---------------------------
 
+  // fprintf(stderr, "CodeJitter:: Timing check\n");
+  // for (int idx = 1; idx < static_cast<int>(aggressor_pairs.size()) - NUM_TIMED_ACCESSES; idx++) {
+  //   // fprintf(stderr, "%d\t", measure_time((char *)aggressor_pairs[idx], (char *)aggressor_pairs[0]));
+  //   fprintf(stderr, "%lu\t", measure_time_asm(aggressor_pairs[idx], aggressor_pairs[0]));
+  // } 
+  // fprintf(stderr, "\n");
   // warmup
   for (int idx = 0; idx < NUM_TIMED_ACCESSES; idx++) {
     a.mov(asmjit::x86::rax, (uint64_t) aggressor_pairs[idx]);
@@ -138,7 +249,7 @@ void CodeJitter::jit_strict(int num_acts_per_trefi,
   // if ((after - before) > 1000) break;
   a.rdtscp();  // result: edx:eax
   a.sub(asmjit::x86::eax, asmjit::x86::ebx);
-  a.cmp(asmjit::x86::eax, (uint64_t) 1000);
+  a.cmp(asmjit::x86::eax, (uint64_t) REF_THRESH);
 
   // depending on the cmp's outcome, jump out of loop or to the loop's beginning
   a.jg(while1_end);
@@ -190,12 +301,13 @@ void CodeJitter::jit_strict(int num_acts_per_trefi,
       a.mov(asmjit::x86::rax, cur_addr);
       a.clflushopt(asmjit::x86::ptr(asmjit::x86::rax));
     }
-    if (sync_each_ref
-        && ((cnt_total_activations%num_acts_per_trefi)==0)) {
-      std::vector<volatile char *> aggs(aggressor_pairs.begin() + i,
-          std::min(aggressor_pairs.begin() + i + NUM_TIMED_ACCESSES, aggressor_pairs.end()));
-      sync_ref(aggs, a);
-    }
+    // temporarily commented out
+    // if (sync_each_ref
+    //     && ((cnt_total_activations%num_acts_per_trefi)==0)) {
+    //   std::vector<volatile char *> aggs(aggressor_pairs.begin() + i,
+    //       std::min(aggressor_pairs.begin() + i + NUM_TIMED_ACCESSES, aggressor_pairs.end()));
+    //   sync_ref(aggs, a);
+    // }
   }
 
   // fences -> ensure that aggressors are not interleaved, i.e., we access aggressors always in same order
@@ -266,7 +378,7 @@ void CodeJitter::sync_ref(const std::vector<volatile char *> &aggressor_pairs, a
 
   // if ((after - before) > 1000) break;
   assembler.sub(asmjit::x86::eax, asmjit::x86::ebx);
-  assembler.cmp(asmjit::x86::eax, (uint64_t) 1000);
+  assembler.cmp(asmjit::x86::eax, (uint64_t) REF_THRESH);
 
   // depending on the cmp's outcome...
   assembler.jg(wend);     // ... jump out of the loop

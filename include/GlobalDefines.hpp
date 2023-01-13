@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <unistd.h>
 #include <sstream>
+#include <unordered_map>
 
 #include "Utilities/Logger.hpp"
 
@@ -19,6 +20,8 @@ uint64_t static inline GB(uint64_t value) {
 [[gnu::unused]] static inline uint64_t BIT_SET(uint64_t value) {
   return (1ULL << (value));
 }
+typedef uint64_t physaddr_t;
+static std::unordered_map<physaddr_t, char*> ppage_2_vpage;
 
 // font colors
 #define FC_RED "\033[0;31m"         // error
@@ -38,7 +41,7 @@ uint64_t static inline GB(uint64_t value) {
 // ########################################################
 
 // number of rounds to measure cache hit/miss latency
-#define DRAMA_ROUNDS 1000
+#define DRAMA_ROUNDS 100
 
 // size in bytes of a cacheline
 #define CACHELINE_SIZE 64
@@ -47,8 +50,9 @@ uint64_t static inline GB(uint64_t value) {
 #define HAMMER_ROUNDS 1000000
 
 // threshold to distinguish between row buffer miss (t > THRESH) and row buffer hit (t < THRESH)
-#define THRESH 495  // worked best on DIMM 6
-//#define THRESH 430  // worked best on DIMM 18
+// #define THRESH 495  // worked best on DIMM 6
+#define THRESH 400  // worked best on DIMM 18
+#define REF_THRESH 800
 
 // number of conflicting addresses to be determined for each bank
 #define NUM_TARGETS 10
@@ -57,7 +61,7 @@ uint64_t static inline GB(uint64_t value) {
 #define MAX_ROWS 30
 
 // number of banks in the system
-#define NUM_BANKS 16
+#define NUM_BANKS 64
 
 // number of active DIMMs in the system
 #define DIMM 1
