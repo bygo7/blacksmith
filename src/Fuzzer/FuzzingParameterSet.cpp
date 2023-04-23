@@ -121,7 +121,7 @@ void FuzzingParameterSet::randomize_parameters(bool print) {
 
   // sync_each_ref = 1 means that we sync after every refresh interval, otherwise we only sync after hammering
   // the whole pattern (which may consists of more than one REF interval)
-  sync_each_ref = Range<int>(0, 0);
+  sync_each_ref = Range<int>(0, 1);
 
   // [CANNOT be derived from anywhere else - but does not fit anywhere: will print to stdout only, not include in json]
   wait_until_start_hammering_refs = Range<int>(10, 128);
@@ -155,7 +155,8 @@ void FuzzingParameterSet::randomize_parameters(bool print) {
   // hammering_total_num_activations is derived as follow:
   //    REF interval: 7.8 μs (tREFI), retention time: 64 ms   => about 8k REFs per refresh window
   //    num_activations_per_tREFI ≈100                       => 8k * 100 ≈ 8M activations and we hammer for 5M acts.
-  hammering_total_num_activations = 5000000;
+  // hammering_total_num_activations = 5000000;
+  hammering_total_num_activations = 25000000;
 
   max_row_no = 8192;
 
@@ -164,7 +165,8 @@ void FuzzingParameterSet::randomize_parameters(bool print) {
 
   // [derivable from aggressors in AggressorAccessPattern, also not very expressive because different agg IDs can be
   // mapped to the same DRAM address]
-  num_aggressors = Range<int>(8, 96).get_random_number(gen);
+  // num_aggressors = Range<int>(20, 96).get_random_number(gen);
+  num_aggressors = Range<int>(15, 45).get_random_number(gen);
 
   // [included in HammeringPattern]
   // it is important that this is a power of two, otherwise the aggressors in the pattern will not respect frequencies

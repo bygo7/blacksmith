@@ -79,7 +79,7 @@ int main(int argc, char **argv) {
   // find address sets that create bank conflicts
   DramAnalyzer dram_analyzer(memory.get_starting_address());
   fprintf(stderr, "main:: get_Starting_address\n");
-  dram_analyzer.find_bank_conflicts();
+  // dram_analyzer.find_bank_conflicts();
   fprintf(stderr, "main:: find_bank_conflict operation finished\n");
   if (program_args.num_ranks != 0) {
     dram_analyzer.load_known_functions(program_args.num_ranks);

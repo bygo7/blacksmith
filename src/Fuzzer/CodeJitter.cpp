@@ -230,6 +230,7 @@ void CodeJitter::jit_strict(int num_acts_per_trefi,
   a.bind(while1_begin);
   // clflushopt addresses involved in sync
   for (int idx = 0; idx < NUM_TIMED_ACCESSES; idx++) {
+    fprintf(stderr, "jit-strict part1: accessing %p\n", aggressor_pairs[idx]);
     a.mov(asmjit::x86::rax, (uint64_t) aggressor_pairs[idx]);
     a.clflushopt(asmjit::x86::ptr(asmjit::x86::rax));
   }
@@ -312,7 +313,7 @@ void CodeJitter::jit_strict(int num_acts_per_trefi,
 
   // fences -> ensure that aggressors are not interleaved, i.e., we access aggressors always in same order
   a.mfence();
-
+  fprintf(stderr, "CodeJitter:: hammering cnt:: %d\n", cnt_total_activations);
   // ------- part 3: synchronize with the end  -----------------------------------------------------------------------
   std::vector<volatile char *> last_aggs(aggressor_pairs.end() - NUM_TIMED_ACCESSES, aggressor_pairs.end());
   sync_ref(last_aggs, a);
